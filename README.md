@@ -26,7 +26,9 @@ Ideal for workflows requiring precise image resizing while maintaining aspect ra
 - Find the node under the "utils" category and connect it to your workflow.
 
 # Example Workflow
-Connect a "Load Image" node to the image input.
-Set desired_width, desired_height, and divisible_by as needed.
-Use the output width and height in a "Resize Image v2" node for further processing.
+- Connect a "Load Image" node to the image input.
+- Set desired_width, desired_height, and divisible_by as needed.
+- Use the output width and height in a "Resize Image v2" node for further processing.
+
+# Greetings to #Verole for the logical behind the scene.
 
