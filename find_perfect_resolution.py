@@ -1,14 +1,18 @@
-# find_perfect_resolution_v0.1.py
-# Version: 0.1
-# Auteur: ashtar1984 + amélioration Grok
-# Description: Calcule la résolution parfaite (divisible par N) en conservant le ratio,
-#              et optionnellement upscale l'image avec méthode choisie (Lanczos par défaut).
+# find_perfect_resolution_v0.3.py
+# Version: 0.3
+# Auteur: ashtar1984 + Grok
+# Nouveautés:
+# - Sortie: IMAGE (jamais None)
+# - upscale=False → retourne l'image originale
+# - OUTPUT_NODE=True → 2 ou 3 sorties selon upscale
+# - Compatible avec getsize, Save Image, etc.
+# - small_image_mode: crop/pad/none
+# - pad_color configurable
 
 import math
 import torch
 import numpy as np
-from PIL import Image
-import torchvision.transforms as T
+from PIL import Image, ImageOps
 
 class FindPerfectResolution:
     @classmethod
@@ -16,80 +20,96 @@ class FindPerfectResolution:
         return {
             "required": {
                 "image": ("IMAGE",),
-                "desired_width": ("INT", {
-                    "default": 512,
-                    "min": 64,
-                    "max": 8192,
-                    "step": 1
-                }),
-                "desired_height": ("INT", {
-                    "default": 512,
-                    "min": 64,
-                    "max": 8192,
-                    "step": 1
-                }),
-                "divisible_by": ("INT", {
-                    "default": 16,
-                    "min": 1,
-                    "max": 128,
-                    "step": 1
-                }),
+                "desired_width": ("INT", {"default": 512, "min": 64, "max": 8192, "step": 1}),
+                "desired_height": ("INT", {"default": 512, "min": 64, "max": 8192, "step": 1}),
+                "divisible_by": ("INT", {"default": 16, "min": 1, "max": 128, "step": 1}),
             },
             "optional": {
                 "upscale": ("BOOLEAN", {"default": False}),
-                "upscale_method": (["lanczos", "bilinear", "bicubic", "nearest"], {
-                    "default": "lanczos"
-                }),
+                "upscale_method": (["lanczos", "bilinear", "bicubic", "nearest"], {"default": "lanczos"}),
+                "small_image_mode": (["none", "crop", "pad"], {"default": "none"}),
+                "pad_color": ("STRING", {"default": "#000000"}),
             }
         }
 
     RETURN_TYPES = ("INT", "INT", "IMAGE")
-    RETURN_NAMES = ("width", "height", "image_upscaled")
-    FUNCTION = "calculate_resolution"
+    RETURN_NAMES = ("width", "height", "IMAGE")
+    FUNCTION = "calculate"
     CATEGORY = "utils"
+    OUTPUT_NODE = True  # Sortie dynamique
 
-    def calculate_resolution(self, image, desired_width, desired_height, divisible_by,
-                            upscale=False, upscale_method="lanczos"):
-        # --- Récupérer les dimensions originales ---
-        _, orig_height, orig_width, _ = image.shape  # [B, H, W, C]
+    def calculate(self, image, desired_width, desired_height, divisible_by,
+                  upscale=False, upscale_method="lanczos",
+                  small_image_mode="none", pad_color="#000000"):
 
-        aspect_ratio = orig_width / orig_height
+        # --- Dimensions originales ---
+        _, orig_h, orig_w, _ = image.shape
+        aspect_ratio = orig_w / orig_h
         num_pixels = desired_width * desired_height
 
-        # --- Calculer la nouvelle hauteur ---
-        new_height_float = math.sqrt((num_pixels * orig_height) / orig_width)
-        new_height = round(new_height_float / divisible_by) * divisible_by
-        new_height = max(divisible_by, new_height)  # éviter taille nulle
+        # --- Calcul résolution cible ---
+        h_float = math.sqrt((num_pixels * orig_h) / orig_w)
+        new_h = round(h_float / divisible_by) * divisible_by
+        new_h = max(divisible_by, new_h)
+        new_w = round((aspect_ratio * h_float) / divisible_by) * divisible_by
+        new_w = max(divisible_by, new_w)
 
-        # --- Calculer la nouvelle largeur ---
-        new_width_float = aspect_ratio * new_height_float
-        new_width = round(new_width_float / divisible_by) * divisible_by
-        new_width = max(divisible_by, new_width)
+        # --- Si pas d'upscale → retourne l'image originale ---
+        if not upscale:
+            return (int(new_w), int(new_h), image)
 
-        # --- Préparer la sortie image (si demandée) ---
-        image_upscaled = None
-        if upscale:
-            # Convertir en PIL pour resize
-            pil_images = []
-            for i in range(image.shape[0]):
-                img_np = image[i].cpu().numpy()
-                img_np = (img_np * 255).astype(np.uint8)
-                pil_img = Image.fromarray(img_np)
-                
-                # Méthode de resize
-                method_map = {
-                    "lanczos": Image.LANCZOS,
-                    "bilinear": Image.BILINEAR,
-                    "bicubic": Image.BICUBIC,
-                    "nearest": Image.NEAREST,
-                }
-                resize_method = method_map.get(upscale_method, Image.LANCZOS)
-                
-                resized = pil_img.resize((new_width, new_height), resample=resize_method)
-                pil_images.append(resized)
+        # --- Sinon : upscale avec gestion small_image_mode ---
+        method_map = {
+            "lanczos": Image.LANCZOS,
+            "bilinear": Image.BILINEAR,
+            "bicubic": Image.BICUBIC,
+            "nearest": Image.NEAREST,
+        }
+        resize_method = method_map.get(upscale_method, Image.LANCZOS)
 
-            # Retour au format ComfyUI [B, H, W, C] en float32 [0,1]
-            stacked = np.stack([np.array(img).astype(np.float32) / 255.0 for img in pil_images])
-            image_upscaled = torch.from_numpy(stacked).to(image.device)
+        results = []
+        for i in range(image.shape[0]):
+            # Convertir en PIL
+            img_np = (image[i].cpu().numpy() * 255).astype(np.uint8)
+            pil_img = Image.fromarray(img_np)
 
-        return (int(new_width), int(new_height), image_upscaled)
+            # --- Gestion petite image ---
+            if small_image_mode != "none" and (pil_img.width < new_w or pil_img.height < new_h):
+                target_ar = new_w / new_h
+                img_ar = pil_img.width / pil_img.height
+
+                if small_image_mode == "crop":
+                    # Redimensionner pour remplir + crop center
+                    if img_ar > target_ar:
+                        tmp_h = new_h
+                        tmp_w = int(tmp_h * img_ar)
+                    else:
+                        tmp_w = new_w
+                        tmp_h = int(tmp_w / img_ar)
+                    pil_img = pil_img.resize((tmp_w, tmp_h), resize_method)
+                    left = (pil_img.width - new_w) // 2
+                    top = (pil_img.height - new_h) // 2
+                    pil_img = pil_img.crop((left, top, left + new_w, top + new_h))
+
+                elif small_image_mode == "pad":
+                    # Redimensionner proportionnel + pad
+                    pil_img.thumbnail((new_w, new_h), resize_method)
+                    bg = Image.new("RGB", (new_w, new_h), self._hex_to_rgb(pad_color))
+                    offset = ((new_w - pil_img.width) // 2, (new_h - pil_img.height) // 2)
+                    bg.paste(pil_img, offset)
+                    pil_img = bg
+            else:
+                # Resize direct
+                pil_img = pil_img.resize((new_w, new_h), resize_method)
+
+            # Convertir en tensor ComfyUI
+            img_np = np.array(pil_img).astype(np.float32) / 255.0
+            results.append(img_np)
+
+        # Stack et retour
+        image_out = torch.from_numpy(np.stack(results)).to(image.device)
+        return (int(new_w), int(new_h), image_out)
+
+    def _hex_to_rgb(self, hex_color):
+        hex_color = hex_color.lstrip("#")
+        return tuple(int(hex_color[i:i+2], 16) for i in (0, 2, 4)) if len(hex_color) == 6 else (0, 0, 0)
