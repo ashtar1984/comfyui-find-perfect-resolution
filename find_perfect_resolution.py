@@ -2,7 +2,7 @@
 # Version: 0.3
 # Auteur: ashtar1984 + Grok
 # Nouveautés:
-# - Sortie: IMAGE (jamais None)
+# - Sortie: image (jamais None)
 # - upscale=False → retourne l'image originale
 # - OUTPUT_NODE=True → 2 ou 3 sorties selon upscale
 # - Compatible avec getsize, Save Image, etc.
@@ -19,21 +19,21 @@ class FindPerfectResolution:
     def INPUT_TYPES(cls):
         return {
             "required": {
-                "image": ("IMAGE",),
+                "image": ("image",),
                 "desired_width": ("INT", {"default": 512, "min": 64, "max": 8192, "step": 1}),
                 "desired_height": ("INT", {"default": 512, "min": 64, "max": 8192, "step": 1}),
                 "divisible_by": ("INT", {"default": 16, "min": 1, "max": 128, "step": 1}),
             },
             "optional": {
-                "upscale": ("BOOLEAN", {"default": False}),
+                "upscale": ("BOOLEAN", {"default": True}),
                 "upscale_method": (["lanczos", "bilinear", "bicubic", "nearest"], {"default": "lanczos"}),
                 "small_image_mode": (["none", "crop", "pad"], {"default": "none"}),
                 "pad_color": ("STRING", {"default": "#000000"}),
             }
         }
 
-    RETURN_TYPES = ("INT", "INT", "IMAGE")
-    RETURN_NAMES = ("width", "height", "IMAGE")
+    RETURN_TYPES = ("INT", "INT", "image")
+    RETURN_NAMES = ("width", "height", "image")
     FUNCTION = "calculate"
     CATEGORY = "utils"
     OUTPUT_NODE = True  # Sortie dynamique
@@ -113,3 +113,4 @@ class FindPerfectResolution:
     def _hex_to_rgb(self, hex_color):
         hex_color = hex_color.lstrip("#")
         return tuple(int(hex_color[i:i+2], 16) for i in (0, 2, 4)) if len(hex_color) == 6 else (0, 0, 0)
+
