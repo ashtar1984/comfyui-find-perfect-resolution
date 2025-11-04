@@ -1,20 +1,20 @@
-# find_perfect_resolution_v0.4.0.py
+# find_perfect_resolution.py
 # Version: 0.4.0
 # Auteur: ashtar1984 + Grok
 # Nouveautés:
 # - upscale = False par défaut
 # - skip_if_smaller = True par défaut → ne touche PAS aux petites images
 # - IMAGE toujours valide (originale si rien à faire)
-# - crop/pad seulement si upscale=True ET image trop petite
 
 import math
 import torch
 import numpy as np
 from PIL import Image, ImageOps
 
+
 class FindPerfectResolution:
     @classmethod
-def INPUT_TYPES(cls):
+    def INPUT_TYPES(cls):
         return {
             "required": {
                 "image": ("IMAGE",),
@@ -23,11 +23,11 @@ def INPUT_TYPES(cls):
                 "divisible_by": ("INT", {"default": 16, "min": 1, "max": 128, "step": 1}),
             },
             "optional": {
-                "upscale": ("BOOLEAN", {"default": False}),  # ← DÉSACTIVÉ PAR DÉFAUT
+                "upscale": ("BOOLEAN", {"default": False}),
                 "upscale_method": (["lanczos", "bilinear", "bicubic", "nearest"], {"default": "lanczos"}),
                 "small_image_mode": (["none", "crop", "pad"], {"default": "none"}),
                 "pad_color": ("STRING", {"default": "#000000"}),
-                "skip_if_smaller": ("BOOLEAN", {"default": True}),  # ← NOUVEAU: ne rien faire si trop petit
+                "skip_if_smaller": ("BOOLEAN", {"default": True}),
             }
         }
 
@@ -53,15 +53,15 @@ def INPUT_TYPES(cls):
         new_w = round((aspect_ratio * h_float) / divisible_by) * divisible_by
         new_w = max(divisible_by, new_w)
 
-        # --- Si upscale désactivé → retourne dimensions + image originale ---
+        # --- Si pas d'upscale → retourne image originale ---
         if not upscale:
             return (int(new_w), int(new_h), image)
 
         # --- Si skip_if_smaller ET image trop petite → ne rien faire ---
         if skip_if_smaller and (orig_w < new_w or orig_h < new_h):
-            return (int(new_w), int(new_h), image)  # Image originale, pas de resize
+            return (int(new_w), int(new_h), image)
 
-        # --- Sinon : upscale avec gestion small_image_mode ---
+        # --- Sinon : upscale ---
         method_map = {
             "lanczos": Image.LANCZOS,
             "bilinear": Image.BILINEAR,
@@ -75,7 +75,6 @@ def INPUT_TYPES(cls):
             img_np = (image[i].cpu().numpy() * 255).astype(np.uint8)
             pil_img = Image.fromarray(img_np)
 
-            # --- Gestion petite image (seulement si pas skip) ---
             if small_image_mode != "none" and (pil_img.width < new_w or pil_img.height < new_h):
                 target_ar = new_w / new_h
                 img_ar = pil_img.width / pil_img.height
