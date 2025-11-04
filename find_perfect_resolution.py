@@ -1,12 +1,11 @@
-# find_perfect_resolution_v0.3.2.py
-# Version: 0.3.2
+# find_perfect_resolution_v0.4.0.py
+# Version: 0.4.0
 # Auteur: ashtar1984 + Grok
 # Nouveautés:
-# - upscale activé par défaut
-# - sortie IMAGE en MAJUSCULES (standard ComfyUI)
-# - jamais None → compatible getsize, Save Image, etc.
-# - crop/pad pour petites images
-# - pad_color configurable
+# - upscale = False par défaut
+# - skip_if_smaller = True par défaut → ne touche PAS aux petites images
+# - IMAGE toujours valide (originale si rien à faire)
+# - crop/pad seulement si upscale=True ET image trop petite
 
 import math
 import torch
@@ -15,7 +14,7 @@ from PIL import Image, ImageOps
 
 class FindPerfectResolution:
     @classmethod
-    def INPUT_TYPES(cls):
+def INPUT_TYPES(cls):
         return {
             "required": {
                 "image": ("IMAGE",),
@@ -24,21 +23,23 @@ class FindPerfectResolution:
                 "divisible_by": ("INT", {"default": 16, "min": 1, "max": 128, "step": 1}),
             },
             "optional": {
-                "upscale": ("BOOLEAN", {"default": True}),  # ← ACTIVÉ PAR DÉFAUT
+                "upscale": ("BOOLEAN", {"default": False}),  # ← DÉSACTIVÉ PAR DÉFAUT
                 "upscale_method": (["lanczos", "bilinear", "bicubic", "nearest"], {"default": "lanczos"}),
                 "small_image_mode": (["none", "crop", "pad"], {"default": "none"}),
                 "pad_color": ("STRING", {"default": "#000000"}),
+                "skip_if_smaller": ("BOOLEAN", {"default": True}),  # ← NOUVEAU: ne rien faire si trop petit
             }
         }
 
     RETURN_TYPES = ("INT", "INT", "IMAGE")
-    RETURN_NAMES = ("width", "height", "IMAGE")  # ← IMAGE EN MAJUSCULES
+    RETURN_NAMES = ("width", "height", "IMAGE")
     FUNCTION = "calculate"
     CATEGORY = "utils"
 
     def calculate(self, image, desired_width, desired_height, divisible_by,
-                  upscale=True, upscale_method="lanczos",
-                  small_image_mode="none", pad_color="#000000"):
+                  upscale=False, upscale_method="lanczos",
+                  small_image_mode="none", pad_color="#000000",
+                  skip_if_smaller=True):
 
         # --- Dimensions originales ---
         _, orig_h, orig_w, _ = image.shape
@@ -52,11 +53,15 @@ class FindPerfectResolution:
         new_w = round((aspect_ratio * h_float) / divisible_by) * divisible_by
         new_w = max(divisible_by, new_w)
 
-        # --- Si pas d'upscale → retourne l'image originale ---
+        # --- Si upscale désactivé → retourne dimensions + image originale ---
         if not upscale:
             return (int(new_w), int(new_h), image)
 
-        # --- Sinon : upscale ---
+        # --- Si skip_if_smaller ET image trop petite → ne rien faire ---
+        if skip_if_smaller and (orig_w < new_w or orig_h < new_h):
+            return (int(new_w), int(new_h), image)  # Image originale, pas de resize
+
+        # --- Sinon : upscale avec gestion small_image_mode ---
         method_map = {
             "lanczos": Image.LANCZOS,
             "bilinear": Image.BILINEAR,
@@ -70,7 +75,7 @@ class FindPerfectResolution:
             img_np = (image[i].cpu().numpy() * 255).astype(np.uint8)
             pil_img = Image.fromarray(img_np)
 
-            # --- Gestion petite image ---
+            # --- Gestion petite image (seulement si pas skip) ---
             if small_image_mode != "none" and (pil_img.width < new_w or pil_img.height < new_h):
                 target_ar = new_w / new_h
                 img_ar = pil_img.width / pil_img.height
