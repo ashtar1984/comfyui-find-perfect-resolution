@@ -19,7 +19,7 @@ class FindPerfectResolution:
     def INPUT_TYPES(cls):
         return {
             "required": {
-                "image": ("image",),
+                "IMAGE": ("IMAGE",),
                 "desired_width": ("INT", {"default": 512, "min": 64, "max": 8192, "step": 1}),
                 "desired_height": ("INT", {"default": 512, "min": 64, "max": 8192, "step": 1}),
                 "divisible_by": ("INT", {"default": 16, "min": 1, "max": 128, "step": 1}),
@@ -32,8 +32,8 @@ class FindPerfectResolution:
             }
         }
 
-    RETURN_TYPES = ("INT", "INT", "image")
-    RETURN_NAMES = ("width", "height", "image")
+    RETURN_TYPES = ("INT", "INT", "IMAGE")
+    RETURN_NAMES = ("width", "height", "IMAGE")
     FUNCTION = "calculate"
     CATEGORY = "utils"
     OUTPUT_NODE = True  # Sortie dynamique
@@ -113,4 +113,5 @@ class FindPerfectResolution:
     def _hex_to_rgb(self, hex_color):
         hex_color = hex_color.lstrip("#")
         return tuple(int(hex_color[i:i+2], 16) for i in (0, 2, 4)) if len(hex_color) == 6 else (0, 0, 0)
+
 
