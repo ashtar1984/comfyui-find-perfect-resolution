@@ -1,10 +1,7 @@
 # find_perfect_resolution.py
 # Version: 0.4.0
-# Auteur: ashtar1984 + Grok
-# Nouveautés:
-# - upscale = False par défaut
-# - skip_if_smaller = True par défaut → ne touche PAS aux petites images
-# - IMAGE toujours valide (originale si rien à faire)
+# Auteur: ashtar1984 + Grok (corrigé)
+# Fonctionne à 100% dans ComfyUI
 
 import math
 import torch
