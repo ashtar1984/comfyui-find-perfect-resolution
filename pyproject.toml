@@ -1,6 +1,6 @@
 [tool.poetry]
 name = "comfyui-find-perfect-resolution"
-version = "0.3.2"
+version = "0.4"
 description = "Calculates the perfect resolution (divisible by N) while preserving aspect ratio, with optional upscale (enabled by default), crop/pad for small images, and always-valid IMAGE output."
 authors = ["ashtar1984"]
 license = "MIT"
