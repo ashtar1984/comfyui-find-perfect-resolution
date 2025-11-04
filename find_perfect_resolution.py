@@ -1,12 +1,11 @@
-# find_perfect_resolution_v0.3.py
-# Version: 0.3
+# find_perfect_resolution_v0.3.2.py
+# Version: 0.3.2
 # Auteur: ashtar1984 + Grok
 # Nouveautés:
-# - Sortie: image (jamais None)
-# - upscale=False → retourne l'image originale
-# - OUTPUT_NODE=True → 2 ou 3 sorties selon upscale
-# - Compatible avec getsize, Save Image, etc.
-# - small_image_mode: crop/pad/none
+# - upscale activé par défaut
+# - sortie IMAGE en MAJUSCULES (standard ComfyUI)
+# - jamais None → compatible getsize, Save Image, etc.
+# - crop/pad pour petites images
 # - pad_color configurable
 
 import math
@@ -19,13 +18,13 @@ class FindPerfectResolution:
     def INPUT_TYPES(cls):
         return {
             "required": {
-                "IMAGE": ("IMAGE",),
+                "image": ("IMAGE",),
                 "desired_width": ("INT", {"default": 512, "min": 64, "max": 8192, "step": 1}),
                 "desired_height": ("INT", {"default": 512, "min": 64, "max": 8192, "step": 1}),
                 "divisible_by": ("INT", {"default": 16, "min": 1, "max": 128, "step": 1}),
             },
             "optional": {
-                "upscale": ("BOOLEAN", {"default": True}),
+                "upscale": ("BOOLEAN", {"default": True}),  # ← ACTIVÉ PAR DÉFAUT
                 "upscale_method": (["lanczos", "bilinear", "bicubic", "nearest"], {"default": "lanczos"}),
                 "small_image_mode": (["none", "crop", "pad"], {"default": "none"}),
                 "pad_color": ("STRING", {"default": "#000000"}),
@@ -33,13 +32,12 @@ class FindPerfectResolution:
         }
 
     RETURN_TYPES = ("INT", "INT", "IMAGE")
-    RETURN_NAMES = ("width", "height", "IMAGE")
+    RETURN_NAMES = ("width", "height", "IMAGE")  # ← IMAGE EN MAJUSCULES
     FUNCTION = "calculate"
     CATEGORY = "utils"
-    OUTPUT_NODE = True  # Sortie dynamique
 
     def calculate(self, image, desired_width, desired_height, divisible_by,
-                  upscale=False, upscale_method="lanczos",
+                  upscale=True, upscale_method="lanczos",
                   small_image_mode="none", pad_color="#000000"):
 
         # --- Dimensions originales ---
@@ -58,7 +56,7 @@ class FindPerfectResolution:
         if not upscale:
             return (int(new_w), int(new_h), image)
 
-        # --- Sinon : upscale avec gestion small_image_mode ---
+        # --- Sinon : upscale ---
         method_map = {
             "lanczos": Image.LANCZOS,
             "bilinear": Image.BILINEAR,
@@ -69,7 +67,6 @@ class FindPerfectResolution:
 
         results = []
         for i in range(image.shape[0]):
-            # Convertir en PIL
             img_np = (image[i].cpu().numpy() * 255).astype(np.uint8)
             pil_img = Image.fromarray(img_np)
 
@@ -79,7 +76,6 @@ class FindPerfectResolution:
                 img_ar = pil_img.width / pil_img.height
 
                 if small_image_mode == "crop":
-                    # Redimensionner pour remplir + crop center
                     if img_ar > target_ar:
                         tmp_h = new_h
                         tmp_w = int(tmp_h * img_ar)
@@ -92,26 +88,20 @@ class FindPerfectResolution:
                     pil_img = pil_img.crop((left, top, left + new_w, top + new_h))
 
                 elif small_image_mode == "pad":
-                    # Redimensionner proportionnel + pad
                     pil_img.thumbnail((new_w, new_h), resize_method)
                     bg = Image.new("RGB", (new_w, new_h), self._hex_to_rgb(pad_color))
                     offset = ((new_w - pil_img.width) // 2, (new_h - pil_img.height) // 2)
                     bg.paste(pil_img, offset)
                     pil_img = bg
             else:
-                # Resize direct
                 pil_img = pil_img.resize((new_w, new_h), resize_method)
 
-            # Convertir en tensor ComfyUI
             img_np = np.array(pil_img).astype(np.float32) / 255.0
             results.append(img_np)
 
-        # Stack et retour
         image_out = torch.from_numpy(np.stack(results)).to(image.device)
         return (int(new_w), int(new_h), image_out)
 
     def _hex_to_rgb(self, hex_color):
         hex_color = hex_color.lstrip("#")
         return tuple(int(hex_color[i:i+2], 16) for i in (0, 2, 4)) if len(hex_color) == 6 else (0, 0, 0)
-
-
