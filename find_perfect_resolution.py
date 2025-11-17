@@ -1,5 +1,13 @@
 # find_perfect_resolution.py
-# Version 0.6.0
+# Version 0.7.0
+# Auteur: ashtar1984 + ChatGPT édition premium
+# Nouveautés:
+# - desired_width et desired_height = 0 autorisés (auto calcul ratio)
+# - divisible_by respecté
+# - upscale/downscale correct
+# - output image toujours redimensionnée si nécessaire
+# - resolution_info affichée sous le node
+
 import math
 import torch
 import numpy as np
@@ -11,8 +19,8 @@ class FindPerfectResolution:
         return {
             "required": {
                 "image": ("IMAGE",),
-                "desired_width": ("INT", {"default": 512, "min": 64, "max": 8192, "step": 1}),
-                "desired_height": ("INT", {"default": 512, "min": 64, "max": 8192, "step": 1}),
+                "desired_width": ("INT", {"default": 0, "min": 0, "max": 8192, "step": 1}),
+                "desired_height": ("INT", {"default": 0, "min": 0, "max": 8192, "step": 1}),
                 "divisible_by": ("INT", {"default": 16, "min": 1, "max": 128, "step": 1}),
             },
             "optional": {
@@ -23,8 +31,8 @@ class FindPerfectResolution:
             }
         }
 
-    RETURN_TYPES = ("INT", "INT", "IMAGE")
-    RETURN_NAMES = ("width", "height", "IMAGE")
+    RETURN_TYPES = ("INT", "INT", "IMAGE", "STRING")
+    RETURN_NAMES = ("width", "height", "IMAGE", "resolution_info")
     FUNCTION = "calculate"
     CATEGORY = "utils"
 
@@ -34,12 +42,24 @@ class FindPerfectResolution:
 
         _, orig_h, orig_w, _ = image.shape
         aspect_ratio = orig_w / orig_h
-        num_pixels = desired_width * desired_height
 
-        # Calcul résolution cible divisible
+        # ----- Calcul automatique si un des deux = 0 -----
+        if desired_width == 0 and desired_height == 0:
+            raise ValueError("desired_width et desired_height ne peuvent PAS être tous les deux à 0.")
+
+        if desired_width == 0:
+            desired_width = int(desired_height * aspect_ratio)
+        if desired_height == 0:
+            desired_height = int(desired_width / aspect_ratio)
+
+        # ----- Calcul résolution divisible -----
+        num_pixels = desired_width * desired_height
         h_float = math.sqrt((num_pixels * orig_h) / orig_w)
         new_h = max(divisible_by, round(h_float / divisible_by) * divisible_by)
         new_w = max(divisible_by, round((aspect_ratio * h_float) / divisible_by) * divisible_by)
+
+        # ----- Info pour node -----
+        resolution_info = f"{new_w}x{new_h}"
 
         method_map = {
             "lanczos": Image.LANCZOS,
@@ -54,13 +74,11 @@ class FindPerfectResolution:
             img_np = (image[i].cpu().numpy() * 255).astype(np.uint8)
             pil_img = Image.fromarray(img_np)
 
-            # Détecte si c'est un upscale
+            # Vérifie si c'est un upscale
             is_upscale = new_w > orig_w or new_h > orig_h
+            do_resize = not is_upscale or (is_upscale and upscale)
 
-            # Ne fait pas d'upscale si pas demandé
-            if is_upscale and not upscale:
-                pil_img = pil_img  # on garde l'image originale
-            else:
+            if do_resize:
                 # small_image_mode
                 if small_image_mode != "none" and (pil_img.width < new_w or pil_img.height < new_h):
                     target_ar = new_w / new_h
@@ -91,8 +109,12 @@ class FindPerfectResolution:
             results.append(img_np)
 
         image_out = torch.from_numpy(np.stack(results)).to(image.device)
-        return (int(new_w), int(new_h), image_out)
+        return (int(new_w), int(new_h), image_out, resolution_info)
 
     def _hex_to_rgb(self, hex_color):
         hex_color = hex_color.lstrip("#")
         return tuple(int(hex_color[i:i+2], 16) for i in (0, 2, 4)) if len(hex_color) == 6 else (0, 0, 0)
+
+    # ----- Affichage direct dans ComfyUI -----
+    def display(self, width, height, **kwargs):
+        return f"{width}x{height}"
