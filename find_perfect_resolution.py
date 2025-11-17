@@ -1,10 +1,9 @@
-# Version: 0.5.0
+# Version: 0.6.0
 # Auteur: ashtar1984 + ChatGPT édition premium
 # Nouveautés :
-# - desired_width et desired_height = 0 par défaut
-# - calcul auto si l’un des deux est 0 (ratio respecté)
-# - affichage d’une chaîne "WxH" sous le node
-# - comportement identique, juste plus intelligent
+# - Affichage automatique de la résolution calculée sous les paramètres
+# - Calcul auto si l’un des deux est 0 (ratio respecté)
+# - Comportement identique, juste plus intelligent
 
 import math
 import torch
@@ -36,6 +35,7 @@ class FindPerfectResolution:
     FUNCTION = "calculate"
     CATEGORY = "utils"
 
+    # ----- Méthode principale -----
     def calculate(self, image, desired_width, desired_height, divisible_by,
                   upscale=False, upscale_method="lanczos",
                   small_image_mode="none", pad_color="#000000",
@@ -126,6 +126,11 @@ class FindPerfectResolution:
 
         return (int(new_w), int(new_h), image_out, resolution_info)
 
+    # ----- Convertisseur hex -> RGB -----
     def _hex_to_rgb(self, hex_color):
         hex_color = hex_color.lstrip("#")
         return tuple(int(hex_color[i:i+2], 16) for i in (0, 2, 4))
+
+    # ----- Affichage auto dans le node -----
+    def display(self, width, height, **kwargs):
+        return f"{width}x{height}"
