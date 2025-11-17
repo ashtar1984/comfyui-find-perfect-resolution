@@ -30,7 +30,8 @@ class FindPerfectResolution:
 
     def calculate(self, image, desired_width, desired_height, divisible_by,
                   upscale=False, upscale_method="lanczos",
-                  small_image_mode="none", pad_color="#000000"):
+                  small_image_mode="none", pad_color="#000000",
+                unique_id=None): 
 
         _, orig_h, orig_w, _ = image.shape
         aspect_ratio = orig_w / orig_h
@@ -117,4 +118,5 @@ class FindPerfectResolution:
     # --- Affichage dans ComfyUI sous le node ---
     def display(self, width, height, resolution_info="", **kwargs):
         return resolution_info
+
 
