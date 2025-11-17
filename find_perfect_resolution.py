@@ -1,16 +1,9 @@
 # find_perfect_resolution.py
-# Version: 0.4.0
-# Auteur: ashtar1984 + Grok
-# Nouveautés:
-# - upscale = False par défaut
-# - skip_if_smaller = True par défaut → ne touche PAS aux petites images
-# - IMAGE toujours valide (originale si rien à faire)
-
+# Version 0.6.0
 import math
 import torch
 import numpy as np
 from PIL import Image, ImageOps
-
 
 class FindPerfectResolution:
     @classmethod
@@ -27,7 +20,6 @@ class FindPerfectResolution:
                 "upscale_method": (["lanczos", "bilinear", "bicubic", "nearest"], {"default": "lanczos"}),
                 "small_image_mode": (["none", "crop", "pad"], {"default": "none"}),
                 "pad_color": ("STRING", {"default": "#000000"}),
-                "skip_if_smaller": ("BOOLEAN", {"default": True}),
             }
         }
 
@@ -38,30 +30,17 @@ class FindPerfectResolution:
 
     def calculate(self, image, desired_width, desired_height, divisible_by,
                   upscale=False, upscale_method="lanczos",
-                  small_image_mode="none", pad_color="#000000",
-                  skip_if_smaller=True):
+                  small_image_mode="none", pad_color="#000000"):
 
-        # --- Dimensions originales ---
         _, orig_h, orig_w, _ = image.shape
         aspect_ratio = orig_w / orig_h
         num_pixels = desired_width * desired_height
 
-        # --- Calcul résolution cible ---
+        # Calcul résolution cible divisible
         h_float = math.sqrt((num_pixels * orig_h) / orig_w)
-        new_h = round(h_float / divisible_by) * divisible_by
-        new_h = max(divisible_by, new_h)
-        new_w = round((aspect_ratio * h_float) / divisible_by) * divisible_by
-        new_w = max(divisible_by, new_w)
+        new_h = max(divisible_by, round(h_float / divisible_by) * divisible_by)
+        new_w = max(divisible_by, round((aspect_ratio * h_float) / divisible_by) * divisible_by)
 
-        # --- Si pas d'upscale → retourne image originale ---
-        if not upscale:
-            return (int(new_w), int(new_h), image)
-
-        # --- Si skip_if_smaller ET image trop petite → ne rien faire ---
-        if skip_if_smaller and (orig_w < new_w or orig_h < new_h):
-            return (int(new_w), int(new_h), image)
-
-        # --- Sinon : upscale ---
         method_map = {
             "lanczos": Image.LANCZOS,
             "bilinear": Image.BILINEAR,
@@ -75,30 +54,38 @@ class FindPerfectResolution:
             img_np = (image[i].cpu().numpy() * 255).astype(np.uint8)
             pil_img = Image.fromarray(img_np)
 
-            if small_image_mode != "none" and (pil_img.width < new_w or pil_img.height < new_h):
-                target_ar = new_w / new_h
-                img_ar = pil_img.width / pil_img.height
+            # Détecte si c'est un upscale
+            is_upscale = new_w > orig_w or new_h > orig_h
 
-                if small_image_mode == "crop":
-                    if img_ar > target_ar:
-                        tmp_h = new_h
-                        tmp_w = int(tmp_h * img_ar)
-                    else:
-                        tmp_w = new_w
-                        tmp_h = int(tmp_w / img_ar)
-                    pil_img = pil_img.resize((tmp_w, tmp_h), resize_method)
-                    left = (pil_img.width - new_w) // 2
-                    top = (pil_img.height - new_h) // 2
-                    pil_img = pil_img.crop((left, top, left + new_w, top + new_h))
-
-                elif small_image_mode == "pad":
-                    pil_img.thumbnail((new_w, new_h), resize_method)
-                    bg = Image.new("RGB", (new_w, new_h), self._hex_to_rgb(pad_color))
-                    offset = ((new_w - pil_img.width) // 2, (new_h - pil_img.height) // 2)
-                    bg.paste(pil_img, offset)
-                    pil_img = bg
+            # Ne fait pas d'upscale si pas demandé
+            if is_upscale and not upscale:
+                pil_img = pil_img  # on garde l'image originale
             else:
-                pil_img = pil_img.resize((new_w, new_h), resize_method)
+                # small_image_mode
+                if small_image_mode != "none" and (pil_img.width < new_w or pil_img.height < new_h):
+                    target_ar = new_w / new_h
+                    img_ar = pil_img.width / pil_img.height
+
+                    if small_image_mode == "crop":
+                        if img_ar > target_ar:
+                            tmp_h = new_h
+                            tmp_w = int(tmp_h * img_ar)
+                        else:
+                            tmp_w = new_w
+                            tmp_h = int(tmp_w / img_ar)
+                        pil_img = pil_img.resize((tmp_w, tmp_h), resize_method)
+                        left = (pil_img.width - new_w) // 2
+                        top = (pil_img.height - new_h) // 2
+                        pil_img = pil_img.crop((left, top, left + new_w, top + new_h))
+
+                    elif small_image_mode == "pad":
+                        pil_img.thumbnail((new_w, new_h), resize_method)
+                        bg = Image.new("RGB", (new_w, new_h), self._hex_to_rgb(pad_color))
+                        offset = ((new_w - pil_img.width) // 2, (new_h - pil_img.height) // 2)
+                        bg.paste(pil_img, offset)
+                        pil_img = bg
+                else:
+                    pil_img = pil_img.resize((new_w, new_h), resize_method)
 
             img_np = np.array(pil_img).astype(np.float32) / 255.0
             results.append(img_np)
