@@ -94,14 +94,21 @@ class FindPerfectResolution:
 
         image_out = torch.from_numpy(np.stack(results)).to(image.device)
 
-        # --- Calcul info pour display ---
-        num_pixels_total = new_w * new_h
-        # On approxime taille en Mo : 3 canaux × 1 byte/pixel (JPEG approx)
-        approx_bytes = new_w * new_h * 3
-        approx_mb = approx_bytes / (1024 * 1024)
-        resolution_info = f"Output: {new_w}x{new_h} | {approx_mb:.2f}MB | {num_pixels_total:,} pixels"
+        # --- Progress UI comme Kijai ---
+        if unique_id is not None:
+            try:
+                num_elements = image_out.numel()
+                element_size = image_out.element_size()
+                memory_size_mb = (num_elements * element_size) / (1024*1024)
+                PromptServer.instance.send_progress_text(
+                    f"<tr><td>Output: </td>"
+                    f"<td><b>{image_out.shape[0]}</b> x <b>{image_out.shape[2]}</b> x <b>{image_out.shape[1]}</b> | {memory_size_mb:.2f}MB</td></tr>",
+                    unique_id
+                )
+            except Exception:
+                pass
 
-        return int(new_w), int(new_h), image_out, resolution_info
+        return int(new_w), int(new_h), image_out, f"{new_w}x{new_h}"
 
     def _hex_to_rgb(self, hex_color):
         hex_color = hex_color.lstrip("#")
@@ -110,3 +117,4 @@ class FindPerfectResolution:
     # --- Affichage dans ComfyUI sous le node ---
     def display(self, width, height, resolution_info="", **kwargs):
         return resolution_info
+
