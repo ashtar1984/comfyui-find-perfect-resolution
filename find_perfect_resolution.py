@@ -1,5 +1,12 @@
 # find_perfect_resolution.py
-# Version 0.8.0
+# Version 0.9.0
+# Auteur: ashtar1984 + ChatGPT édition premium
+# Nouveautés :
+# - Affichage Output sous le node (WxH | Mo | pixels)
+# - unique_id récupéré via hidden input
+# - Downscale / Upscale correct
+# - small_image_mode supporté
+
 import math
 import torch
 import numpy as np
@@ -20,6 +27,9 @@ class FindPerfectResolution:
                 "upscale_method": (["lanczos", "bilinear", "bicubic", "nearest"], {"default": "lanczos"}),
                 "small_image_mode": (["none", "crop", "pad"], {"default": "none"}),
                 "pad_color": ("STRING", {"default": "#000000"}),
+            },
+            "hidden": {
+                "unique_id": "UNIQUE_ID"  # récupéré automatiquement par ComfyUI
             }
         }
 
@@ -31,7 +41,7 @@ class FindPerfectResolution:
     def calculate(self, image, desired_width, desired_height, divisible_by,
                   upscale=False, upscale_method="lanczos",
                   small_image_mode="none", pad_color="#000000",
-                unique_id=None): 
+                  unique_id=None):
 
         _, orig_h, orig_w, _ = image.shape
         aspect_ratio = orig_w / orig_h
@@ -95,28 +105,28 @@ class FindPerfectResolution:
 
         image_out = torch.from_numpy(np.stack(results)).to(image.device)
 
-        # --- Progress UI comme Kijai ---
+        # --- Création de la ligne Output pour le node ---
+        num_pixels_total = new_w * new_h
+        approx_bytes = new_w * new_h * 3  # approx 3 bytes par pixel
+        approx_mb = approx_bytes / (1024*1024)
+        resolution_info = f"Output: {new_w}x{new_h} | {approx_mb:.2f}MB | {num_pixels_total:,} pixels"
+
+        # --- Optionnel : envoyer via PromptServer si tu as un unique_id valide ---
         if unique_id is not None:
             try:
-                num_elements = image_out.numel()
                 element_size = image_out.element_size()
-                memory_size_mb = (num_elements * element_size) / (1024*1024)
+                memory_size_mb = (image_out.numel() * element_size) / (1024*1024)
+                from modules import PromptServer
                 PromptServer.instance.send_progress_text(
                     f"<tr><td>Output: </td>"
-                    f"<td><b>{image_out.shape[0]}</b> x <b>{image_out.shape[2]}</b> x <b>{image_out.shape[1]}</b> | {memory_size_mb:.2f}MB</td></tr>",
+                    f"<td><b>{new_w}</b> x <b>{new_h}</b> | {memory_size_mb:.2f}MB | {num_pixels_total:,} pixels</td></tr>",
                     unique_id
                 )
             except Exception:
                 pass
 
-        return int(new_w), int(new_h), image_out, f"{new_w}x{new_h}"
+        return int(new_w), int(new_h), image_out, resolution_info
 
     def _hex_to_rgb(self, hex_color):
         hex_color = hex_color.lstrip("#")
         return tuple(int(hex_color[i:i+2], 16) for i in (0, 2, 4)) if len(hex_color) == 6 else (0, 0, 0)
-
-    # --- Affichage dans ComfyUI sous le node ---
-    def display(self, width, height, resolution_info="", **kwargs):
-        return resolution_info
-
-
