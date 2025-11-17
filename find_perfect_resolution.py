@@ -1,10 +1,10 @@
-# find_perfect_resolution.py
-# Version: 0.4.0
-# Auteur: ashtar1984 + Grok
-# Nouveautés:
-# - upscale = False par défaut
-# - skip_if_smaller = True par défaut → ne touche PAS aux petites images
-# - IMAGE toujours valide (originale si rien à faire)
+# Version: 0.5.0
+# Auteur: ashtar1984 + ChatGPT édition premium
+# Nouveautés :
+# - desired_width et desired_height = 0 par défaut
+# - calcul auto si l’un des deux est 0 (ratio respecté)
+# - affichage d’une chaîne "WxH" sous le node
+# - comportement identique, juste plus intelligent
 
 import math
 import torch
@@ -18,8 +18,8 @@ class FindPerfectResolution:
         return {
             "required": {
                 "image": ("IMAGE",),
-                "desired_width": ("INT", {"default": 512, "min": 64, "max": 8192, "step": 1}),
-                "desired_height": ("INT", {"default": 512, "min": 64, "max": 8192, "step": 1}),
+                "desired_width": ("INT", {"default": 0, "min": 0, "max": 8192, "step": 1}),
+                "desired_height": ("INT", {"default": 0, "min": 0, "max": 8192, "step": 1}),
                 "divisible_by": ("INT", {"default": 16, "min": 1, "max": 128, "step": 1}),
             },
             "optional": {
@@ -31,8 +31,8 @@ class FindPerfectResolution:
             }
         }
 
-    RETURN_TYPES = ("INT", "INT", "IMAGE")
-    RETURN_NAMES = ("width", "height", "IMAGE")
+    RETURN_TYPES = ("INT", "INT", "IMAGE", "STRING")
+    RETURN_NAMES = ("width", "height", "IMAGE", "resolution_info")
     FUNCTION = "calculate"
     CATEGORY = "utils"
 
@@ -41,27 +41,43 @@ class FindPerfectResolution:
                   small_image_mode="none", pad_color="#000000",
                   skip_if_smaller=True):
 
-        # --- Dimensions originales ---
+        # Dimensions originales (B, H, W, C)
         _, orig_h, orig_w, _ = image.shape
         aspect_ratio = orig_w / orig_h
+
+        # ----- AUTO CALCUL W/H -----
+        if desired_width == 0 and desired_height == 0:
+            raise ValueError("desired_width et desired_height ne peuvent PAS être tous les deux à 0.")
+
+        if desired_width == 0:
+            desired_width = int(desired_height * aspect_ratio)
+
+        if desired_height == 0:
+            desired_height = int(desired_width / aspect_ratio)
+
+        # Pixel target
         num_pixels = desired_width * desired_height
 
-        # --- Calcul résolution cible ---
+        # ----- Calcul résolution divisible -----
         h_float = math.sqrt((num_pixels * orig_h) / orig_w)
         new_h = round(h_float / divisible_by) * divisible_by
         new_h = max(divisible_by, new_h)
+
         new_w = round((aspect_ratio * h_float) / divisible_by) * divisible_by
         new_w = max(divisible_by, new_w)
 
-        # --- Si pas d'upscale → retourne image originale ---
+        # TEXT info affichée dans le node
+        resolution_info = f"{new_w}x{new_h}"
+
+        # ----- Si pas d’upscale -----
         if not upscale:
-            return (int(new_w), int(new_h), image)
+            return (int(new_w), int(new_h), image, resolution_info)
 
-        # --- Si skip_if_smaller ET image trop petite → ne rien faire ---
+        # ----- Skip si plus petit -----
         if skip_if_smaller and (orig_w < new_w or orig_h < new_h):
-            return (int(new_w), int(new_h), image)
+            return (int(new_w), int(new_h), image, resolution_info)
 
-        # --- Sinon : upscale ---
+        # Méthode resize PIL
         method_map = {
             "lanczos": Image.LANCZOS,
             "bilinear": Image.BILINEAR,
@@ -70,11 +86,13 @@ class FindPerfectResolution:
         }
         resize_method = method_map.get(upscale_method, Image.LANCZOS)
 
+        # ----- Upscale -----
         results = []
         for i in range(image.shape[0]):
             img_np = (image[i].cpu().numpy() * 255).astype(np.uint8)
             pil_img = Image.fromarray(img_np)
 
+            # Traitement small image mode
             if small_image_mode != "none" and (pil_img.width < new_w or pil_img.height < new_h):
                 target_ar = new_w / new_h
                 img_ar = pil_img.width / pil_img.height
@@ -87,6 +105,7 @@ class FindPerfectResolution:
                         tmp_w = new_w
                         tmp_h = int(tmp_w / img_ar)
                     pil_img = pil_img.resize((tmp_w, tmp_h), resize_method)
+
                     left = (pil_img.width - new_w) // 2
                     top = (pil_img.height - new_h) // 2
                     pil_img = pil_img.crop((left, top, left + new_w, top + new_h))
@@ -104,8 +123,9 @@ class FindPerfectResolution:
             results.append(img_np)
 
         image_out = torch.from_numpy(np.stack(results)).to(image.device)
-        return (int(new_w), int(new_h), image_out)
+
+        return (int(new_w), int(new_h), image_out, resolution_info)
 
     def _hex_to_rgb(self, hex_color):
         hex_color = hex_color.lstrip("#")
-        return tuple(int(hex_color[i:i+2], 16) for i in (0, 2, 4)) if len(hex_color) == 6 else (0, 0, 0)
+        return tuple(int(hex_color[i:i+2], 16) for i in (0, 2, 4))
