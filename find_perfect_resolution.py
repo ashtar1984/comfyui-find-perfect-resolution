@@ -1,7 +1,7 @@
-# find_perfect_resolution_live.py
-# Version 0.12
+# find_perfect_resolution_live_simple.py
+# Version 0.14
 # Auteur: ashtar1984 + ChatGPT
-# Affichage live de l'Output sous le node via PromptServer comme Kijai
+# Affichage live Output directement sous le node via unique_id
 
 import math
 import torch
@@ -25,9 +25,7 @@ class FindPerfectResolution:
                 "pad_color": ("STRING", {"default": "#000000"}),
             },
             "hidden": {
-                "extra_pnginfo": None,
-                "any_input": None,
-                "unique_id": "UNIQUE_ID",
+                "unique_id": "UNIQUE_ID",  # important pour l'affichage live
             }
         }
 
@@ -39,11 +37,12 @@ class FindPerfectResolution:
     def calculate(self, image, desired_width, desired_height, divisible_by,
                   upscale=False, upscale_method="lanczos",
                   small_image_mode="none", pad_color="#000000",
-                  extra_pnginfo=None, any_input=None):
+                  unique_id=None):
 
         _, orig_h, orig_w, _ = image.shape
         aspect_ratio = orig_w / orig_h
 
+        # --- Auto calcul si 0 ---
         if desired_width == 0 and desired_height == 0:
             raise ValueError("desired_width et desired_height ne peuvent PAS être tous les deux à 0.")
         if desired_width == 0:
@@ -103,39 +102,25 @@ class FindPerfectResolution:
         image_out = torch.from_numpy(np.stack(results)).to(image.device)
 
         # --- Infos pour affichage ---
-        num_pixels_total = new_w * new_h
         approx_bytes = new_w * new_h * 3
         approx_mb = approx_bytes / (1024*1024)
-        resolution_info = f"Output: {new_w}x{new_h} | {approx_mb:.2f}MB | {num_pixels_total:,} pixels"
+        resolution_info = f"{new_w}x{new_h} | {approx_mb:.2f}MB | {new_w*new_h:,} pixels"
 
-        # --- Récupération unique_id du node depuis workflow ---
-        node_unique_id = None
-        try:
-            if extra_pnginfo is not None and any_input is not None:
-                workflow = extra_pnginfo.get("workflow", {})
-                for node in workflow.get("nodes", []):
-                    if node.get("id") == int(any_input):
-                        node_unique_id = node["id"]
-                        break
-        except Exception:
-            pass
-
-
-
-
+        # --- Affichage live sous le node ---
         if unique_id:
-            element_size = image_out.element_size()
-            memory_size_mb = (image_out.numel() * element_size) / (1024*1024)
-             PromptServer.instance.send_progress_text(
-                f"<tr><td>Output: </td>"
-                f"<td><b>{new_w}</b> x <b>{new_h}</b> | {memory_size_mb:.2f}MB | {num_pixels_total:,} pixels</td></tr>",
-                node_unique_id
-            )
-          
+            try:
+                from server import PromptServer
+                memory_size_mb = (image_out.numel() * image_out.element_size()) / (1024*1024)
+                PromptServer.instance.send_progress_text(
+                    f"<tr><td>Output: </td>"
+                    f"<td><b>{new_w}</b> x <b>{new_h}</b> | {memory_size_mb:.2f}MB | {new_w*new_h:,} pixels</td></tr>",
+                    unique_id
+                )
+            except Exception:
+                pass
 
         return int(new_w), int(new_h), image_out, resolution_info
 
     def _hex_to_rgb(self, hex_color):
         hex_color = hex_color.lstrip("#")
         return tuple(int(hex_color[i:i+2], 16) for i in (0, 2, 4)) if len(hex_color) == 6 else (0, 0, 0)
-
