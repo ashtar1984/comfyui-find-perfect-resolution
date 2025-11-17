@@ -27,6 +27,7 @@ class FindPerfectResolution:
             "hidden": {
                 "extra_pnginfo": None,
                 "any_input": None,
+                "unique_id": "UNIQUE_ID",
             }
         }
 
@@ -119,22 +120,22 @@ class FindPerfectResolution:
         except Exception:
             pass
 
-        # --- Affichage via PromptServer ---
-        if node_unique_id is not None:
-            try:
-                from modules import PromptServer
-                element_size = image_out.element_size()
-                memory_size_mb = (image_out.numel() * element_size) / (1024*1024)
-                PromptServer.instance.send_progress_text(
-                    f"<tr><td>Output: </td>"
-                    f"<td><b>{new_w}</b> x <b>{new_h}</b> | {memory_size_mb:.2f}MB | {num_pixels_total:,} pixels</td></tr>",
-                    node_unique_id
-                )
-            except Exception:
-                pass
+
+
+
+        if unique_id:
+            element_size = image_out.element_size()
+            memory_size_mb = (image_out.numel() * element_size) / (1024*1024)
+             PromptServer.instance.send_progress_text(
+                f"<tr><td>Output: </td>"
+                f"<td><b>{new_w}</b> x <b>{new_h}</b> | {memory_size_mb:.2f}MB | {num_pixels_total:,} pixels</td></tr>",
+                node_unique_id
+            )
+          
 
         return int(new_w), int(new_h), image_out, resolution_info
 
     def _hex_to_rgb(self, hex_color):
         hex_color = hex_color.lstrip("#")
         return tuple(int(hex_color[i:i+2], 16) for i in (0, 2, 4)) if len(hex_color) == 6 else (0, 0, 0)
+
