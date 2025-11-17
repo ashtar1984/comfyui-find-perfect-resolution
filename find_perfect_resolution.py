@@ -1,17 +1,9 @@
 # find_perfect_resolution.py
-# Version 0.7.0
-# Auteur: ashtar1984 + ChatGPT édition premium
-# Nouveautés:
-# - desired_width et desired_height = 0 autorisés (auto calcul ratio)
-# - divisible_by respecté
-# - upscale/downscale correct
-# - output image toujours redimensionnée si nécessaire
-# - resolution_info affichée sous le node
-
+# Version 0.8.0
 import math
 import torch
 import numpy as np
-from PIL import Image, ImageOps
+from PIL import Image
 
 class FindPerfectResolution:
     @classmethod
@@ -43,23 +35,19 @@ class FindPerfectResolution:
         _, orig_h, orig_w, _ = image.shape
         aspect_ratio = orig_w / orig_h
 
-        # ----- Calcul automatique si un des deux = 0 -----
+        # --- Auto calcul si 0 ---
         if desired_width == 0 and desired_height == 0:
             raise ValueError("desired_width et desired_height ne peuvent PAS être tous les deux à 0.")
-
         if desired_width == 0:
             desired_width = int(desired_height * aspect_ratio)
         if desired_height == 0:
             desired_height = int(desired_width / aspect_ratio)
 
-        # ----- Calcul résolution divisible -----
+        # --- Calcul résolution divisible ---
         num_pixels = desired_width * desired_height
         h_float = math.sqrt((num_pixels * orig_h) / orig_w)
         new_h = max(divisible_by, round(h_float / divisible_by) * divisible_by)
         new_w = max(divisible_by, round((aspect_ratio * h_float) / divisible_by) * divisible_by)
-
-        # ----- Info pour node -----
-        resolution_info = f"{new_w}x{new_h}"
 
         method_map = {
             "lanczos": Image.LANCZOS,
@@ -74,16 +62,13 @@ class FindPerfectResolution:
             img_np = (image[i].cpu().numpy() * 255).astype(np.uint8)
             pil_img = Image.fromarray(img_np)
 
-            # Vérifie si c'est un upscale
             is_upscale = new_w > orig_w or new_h > orig_h
             do_resize = not is_upscale or (is_upscale and upscale)
 
             if do_resize:
-                # small_image_mode
                 if small_image_mode != "none" and (pil_img.width < new_w or pil_img.height < new_h):
                     target_ar = new_w / new_h
                     img_ar = pil_img.width / pil_img.height
-
                     if small_image_mode == "crop":
                         if img_ar > target_ar:
                             tmp_h = new_h
@@ -95,7 +80,6 @@ class FindPerfectResolution:
                         left = (pil_img.width - new_w) // 2
                         top = (pil_img.height - new_h) // 2
                         pil_img = pil_img.crop((left, top, left + new_w, top + new_h))
-
                     elif small_image_mode == "pad":
                         pil_img.thumbnail((new_w, new_h), resize_method)
                         bg = Image.new("RGB", (new_w, new_h), self._hex_to_rgb(pad_color))
@@ -109,12 +93,20 @@ class FindPerfectResolution:
             results.append(img_np)
 
         image_out = torch.from_numpy(np.stack(results)).to(image.device)
-        return (int(new_w), int(new_h), image_out, resolution_info)
+
+        # --- Calcul info pour display ---
+        num_pixels_total = new_w * new_h
+        # On approxime taille en Mo : 3 canaux × 1 byte/pixel (JPEG approx)
+        approx_bytes = new_w * new_h * 3
+        approx_mb = approx_bytes / (1024 * 1024)
+        resolution_info = f"Output: {new_w}x{new_h} | {approx_mb:.2f}MB | {num_pixels_total:,} pixels"
+
+        return int(new_w), int(new_h), image_out, resolution_info
 
     def _hex_to_rgb(self, hex_color):
         hex_color = hex_color.lstrip("#")
         return tuple(int(hex_color[i:i+2], 16) for i in (0, 2, 4)) if len(hex_color) == 6 else (0, 0, 0)
 
-    # ----- Affichage direct dans ComfyUI -----
-    def display(self, width, height, **kwargs):
-        return f"{width}x{height}"
+    # --- Affichage dans ComfyUI sous le node ---
+    def display(self, width, height, resolution_info="", **kwargs):
+        return resolution_info
