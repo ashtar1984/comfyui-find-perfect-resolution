@@ -112,6 +112,10 @@ class FindPerfectResolution:
         try:
             if extra_pnginfo is not None and any_input is not None:
                 workflow = extra_pnginfo.get("workflow", {})
+                
+                # DEBUG
+                print(json.dumps(workflow, indent=4))
+                
                 for node in workflow.get("nodes", []):
                     if node.get("id") == int(any_input):
                         node_unique_id = node["id"]
@@ -138,3 +142,4 @@ class FindPerfectResolution:
     def _hex_to_rgb(self, hex_color):
         hex_color = hex_color.lstrip("#")
         return tuple(int(hex_color[i:i+2], 16) for i in (0, 2, 4)) if len(hex_color) == 6 else (0, 0, 0)
+
